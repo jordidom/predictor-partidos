@@ -1,0 +1,50 @@
+<!DOCTYPE html>
+<html lang="es">
+<head>
+  <meta charset="UTF-8">
+  <meta name="viewport" content="width=device-width, initial-scale=1.0">
+  <title>MatchPredict Pro</title>
+  <link rel="stylesheet" href="{{ url_for('static', filename='css/styles.css') }}">
+</head>
+<body>
+  <header class="topbar">
+    <div class="container topbar-content">
+      <a href="{{ url_for('index') }}" class="brand">
+        <span class="brand-badge">MP</span>
+        <div>
+          <h1>MatchPredict Pro</h1>
+          <p>Predicciones deportivas con estilo</p>
+        </div>
+      </a>
+
+      <nav class="nav">
+        <a href="{{ url_for('index') }}">Inicio</a>
+        {% if session.get('is_admin') %}
+          <a href="{{ url_for('admin_dashboard') }}">Panel Admin</a>
+          <a href="{{ url_for('logout') }}">Salir</a>
+        {% else %}
+          <a href="{{ url_for('login') }}">Acceso Admin</a>
+        {% endif %}
+      </nav>
+    </div>
+  </header>
+
+  <main class="main-content">
+    <div class="container">
+      {% with messages = get_flashed_messages(with_categories=true) %}
+        {% if messages %}
+          <div class="flash-wrap">
+            {% for category, message in messages %}
+              <div class="flash flash-{{ category }}">{{ message }}</div>
+            {% endfor %}
+          </div>
+        {% endif %}
+      {% endwith %}
+    </div>
+
+    {% block content %}{% endblock %}
+  </main>
+
+  <script src="{{ url_for('static', filename='js/app.js') }}"></script>
+</body>
+</html>

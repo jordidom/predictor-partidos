@@ -1,0 +1,92 @@
+{% extends "base.html" %}
+
+{% block content %}
+<section class="hero">
+  <div class="container hero-grid">
+    <div>
+      <span class="pill">Predictor deportivo</span>
+      <h2>Consulta mis predicciones de partidos</h2>
+      <p>
+        Una web elegante para mostrar análisis, resultados esperados y confianza
+        en cada pronóstico.
+      </p>
+    </div>
+    <div class="hero-panel">
+      <div class="hero-stat">
+        <strong>{{ predictions|length }}</strong>
+        <span>Partidos publicados</span>
+      </div>
+      <div class="hero-stat">
+        <strong>1X2</strong>
+        <span>Predicciones claras</span>
+      </div>
+      <div class="hero-stat">
+        <strong>Pro</strong>
+        <span>Diseño moderno</span>
+      </div>
+    </div>
+  </div>
+</section>
+
+<section class="container section">
+  <div class="section-head">
+    <h3>Partidos publicados</h3>
+    <input type="text" id="searchInput" placeholder="Buscar equipo o competición...">
+  </div>
+
+  <div class="cards-grid" id="predictionsGrid">
+    {% for item in predictions %}
+      <article class="match-card">
+        <div class="card-top">
+          <span class="league">{{ item.competition }}</span>
+          <span class="status status-{{ item.status|lower }}">{{ item.status }}</span>
+        </div>
+
+        <div class="match-date">{{ item.match_date.strftime('%d/%m/%Y %H:%M') }}</div>
+
+        <div class="teams">
+          <div class="team">{{ item.home_team }}</div>
+          <div class="vs">VS</div>
+          <div class="team">{{ item.away_team }}</div>
+        </div>
+
+        <div class="prediction-box">
+          <div>
+            <span class="label">Pronóstico</span>
+            <strong>{{ item.predicted_result }}</strong>
+          </div>
+          <div>
+            <span class="label">Marcador esperado</span>
+            <strong>
+              {% if item.predicted_home_score is not none and item.predicted_away_score is not none %}
+                {{ item.predicted_home_score }} - {{ item.predicted_away_score }}
+              {% else %}
+                No definido
+              {% endif %}
+            </strong>
+          </div>
+          <div>
+            <span class="label">Confianza</span>
+            <strong>{{ item.confidence_level }}</strong>
+          </div>
+        </div>
+
+        {% if item.analysis %}
+          <p class="analysis">{{ item.analysis }}</p>
+        {% endif %}
+
+        {% if item.actual_home_score is not none and item.actual_away_score is not none %}
+          <div class="real-score">
+            Resultado real: {{ item.actual_home_score }} - {{ item.actual_away_score }}
+          </div>
+        {% endif %}
+      </article>
+    {% else %}
+      <div class="empty-state">
+        <h4>No hay predicciones todavía</h4>
+        <p>Entra como administrador para publicar la primera.</p>
+      </div>
+    {% endfor %}
+  </div>
+</section>
+{% endblock %}

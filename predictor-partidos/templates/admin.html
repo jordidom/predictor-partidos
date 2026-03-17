@@ -1,0 +1,126 @@
+{% extends "base.html" %}
+
+{% block content %}
+<section class="container section">
+  <div class="admin-header">
+    <div>
+      <span class="pill">Panel administrador</span>
+      <h2>Gestionar predicciones</h2>
+      <p>Añade partidos, marcador esperado y análisis rápido.</p>
+    </div>
+  </div>
+
+  <div class="admin-layout">
+    <div class="admin-form-card">
+      <h3>Nueva predicción</h3>
+
+      <form method="POST" action="{{ url_for('add_prediction') }}" class="admin-form">
+        <div class="grid-2">
+          <div class="form-group">
+            <label>Competición</label>
+            <input type="text" name="competition" placeholder="LaLiga, Champions..." required>
+          </div>
+
+          <div class="form-group">
+            <label>Fecha y hora</label>
+            <input type="datetime-local" name="match_date" required>
+          </div>
+        </div>
+
+        <div class="grid-2">
+          <div class="form-group">
+            <label>Equipo local</label>
+            <input type="text" name="home_team" required>
+          </div>
+
+          <div class="form-group">
+            <label>Equipo visitante</label>
+            <input type="text" name="away_team" required>
+          </div>
+        </div>
+
+        <div class="grid-3">
+          <div class="form-group">
+            <label>Pronóstico</label>
+            <select name="predicted_result" required>
+              <option value="">Selecciona</option>
+              <option value="1">1 - Gana local</option>
+              <option value="X">X - Empate</option>
+              <option value="2">2 - Gana visitante</option>
+            </select>
+          </div>
+
+          <div class="form-group">
+            <label>Marcador local</label>
+            <input type="number" name="predicted_home_score" min="0" placeholder="Ej: 2">
+          </div>
+
+          <div class="form-group">
+            <label>Marcador visitante</label>
+            <input type="number" name="predicted_away_score" min="0" placeholder="Ej: 1">
+          </div>
+        </div>
+
+        <div class="form-group">
+          <label>Confianza</label>
+          <select name="confidence_level">
+            <option value="Baja">Baja</option>
+            <option value="Media" selected>Media</option>
+            <option value="Alta">Alta</option>
+          </select>
+        </div>
+
+        <div class="form-group">
+          <label>Análisis</label>
+          <textarea name="analysis" rows="5" placeholder="Escribe aquí tu análisis del partido..."></textarea>
+        </div>
+
+        <button type="submit" class="btn btn-primary">Guardar predicción</button>
+      </form>
+    </div>
+
+    <div class="admin-list-card">
+      <h3>Predicciones publicadas</h3>
+
+      <div class="admin-predictions-list">
+        {% for item in predictions %}
+          <div class="admin-item">
+            <div class="admin-item-head">
+              <div>
+                <strong>{{ item.home_team }} vs {{ item.away_team }}</strong>
+                <p>{{ item.competition }} · {{ item.match_date.strftime('%d/%m/%Y %H:%M') }}</p>
+              </div>
+              <span class="mini-badge">{{ item.predicted_result }}</span>
+            </div>
+
+            <div class="admin-item-body">
+              <p><strong>Marcador esperado:</strong>
+                {% if item.predicted_home_score is not none and item.predicted_away_score is not none %}
+                  {{ item.predicted_home_score }} - {{ item.predicted_away_score }}
+                {% else %}
+                  No definido
+                {% endif %}
+              </p>
+              <p><strong>Confianza:</strong> {{ item.confidence_level }}</p>
+              <p><strong>Estado:</strong> {{ item.status }}</p>
+            </div>
+
+            <form method="POST" action="{{ url_for('update_result', prediction_id=item.id) }}" class="result-form">
+              <input type="hidden" name="predicted_result" value="{{ item.predicted_result }}">
+              <input type="number" name="actual_home_score" min="0" placeholder="Real local">
+              <input type="number" name="actual_away_score" min="0" placeholder="Real visitante">
+              <button type="submit" class="btn btn-secondary">Actualizar resultado</button>
+            </form>
+
+            <form method="POST" action="{{ url_for('delete_prediction', prediction_id=item.id) }}">
+              <button type="submit" class="btn btn-danger">Eliminar</button>
+            </form>
+          </div>
+        {% else %}
+          <p>No has publicado ninguna predicción todavía.</p>
+        {% endfor %}
+      </div>
+    </div>
+  </div>
+</section>
+{% endblock %}
