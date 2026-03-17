@@ -9,15 +9,90 @@ app = Flask(__name__)
 app.secret_key = SECRET_KEY
 
 
+# -------------------------
+# CONEXIÓN DB
+# -------------------------
 def get_db_connection():
     return mysql.connector.connect(**MYSQL_CONFIG)
 
 
+# -------------------------
+# CREAR TABLAS AUTOMÁTICAMENTE
+# -------------------------
+def create_tables():
+    conn = get_db_connection()
+    cursor = conn.cursor()
+
+    cursor.execute("""
+    CREATE TABLE IF NOT EXISTS users (
+        id INT AUTO_INCREMENT PRIMARY KEY,
+        username VARCHAR(100) NOT NULL UNIQUE,
+        password_hash VARCHAR(255) NOT NULL,
+        is_admin BOOLEAN NOT NULL DEFAULT FALSE,
+        created_at TIMESTAMP DEFAULT CURRENT_TIMESTAMP
+    );
+    """)
+
+    cursor.execute("""
+    CREATE TABLE IF NOT EXISTS predictions (
+        id INT AUTO_INCREMENT PRIMARY KEY,
+        competition VARCHAR(120) NOT NULL,
+        match_date DATETIME NOT NULL,
+        home_team VARCHAR(120) NOT NULL,
+        away_team VARCHAR(120) NOT NULL,
+        predicted_result VARCHAR(50) NOT NULL,
+        predicted_home_score INT DEFAULT NULL,
+        predicted_away_score INT DEFAULT NULL,
+        confidence_level VARCHAR(30) DEFAULT 'Media',
+        analysis TEXT,
+        status VARCHAR(30) DEFAULT 'Pendiente',
+        actual_home_score INT DEFAULT NULL,
+        actual_away_score INT DEFAULT NULL,
+        created_by INT,
+        created_at TIMESTAMP DEFAULT CURRENT_TIMESTAMP
+    );
+    """)
+
+    conn.commit()
+    cursor.close()
+    conn.close()
+
+
+# -------------------------
+# CREAR ADMIN AUTOMÁTICO
+# -------------------------
+def create_admin():
+    conn = get_db_connection()
+    cursor = conn.cursor(dictionary=True)
+
+    cursor.execute("SELECT * FROM users WHERE username = %s", ("admin",))
+    user = cursor.fetchone()
+
+    if not user:
+        password_hash = generate_password_hash("123admin123")
+        cursor.execute("""
+            INSERT INTO users (username, password_hash, is_admin)
+            VALUES (%s, %s, %s)
+        """, ("admin", password_hash, True))
+        conn.commit()
+
+    cursor.close()
+    conn.close()
+
+
+# Ejecutar al iniciar
+with app.app_context():
+    create_tables()
+    create_admin()
+
+
+# -------------------------
+# DECORADORES
+# -------------------------
 def login_required(f):
     @wraps(f)
     def decorated_function(*args, **kwargs):
         if "user_id" not in session:
-            flash("Debes iniciar sesión para acceder.", "warning")
             return redirect(url_for("login"))
         return f(*args, **kwargs)
     return decorated_function
@@ -26,35 +101,25 @@ def login_required(f):
 def admin_required(f):
     @wraps(f)
     def decorated_function(*args, **kwargs):
-        if "user_id" not in session or not session.get("is_admin"):
-            flash("No tienes permisos para acceder.", "danger")
+        if not session.get("is_admin"):
             return redirect(url_for("index"))
         return f(*args, **kwargs)
     return decorated_function
 
 
+# -------------------------
+# RUTAS
+# -------------------------
 @app.route("/")
 def index():
-    conn = None
-    cursor = None
-    predictions = []
+    conn = get_db_connection()
+    cursor = conn.cursor(dictionary=True)
 
-    try:
-        conn = get_db_connection()
-        cursor = conn.cursor(dictionary=True)
-        cursor.execute("""
-            SELECT *
-            FROM predictions
-            ORDER BY match_date ASC, created_at DESC
-        """)
-        predictions = cursor.fetchall()
-    except Error as e:
-        flash(f"Error al cargar predicciones: {e}", "danger")
-    finally:
-        if cursor:
-            cursor.close()
-        if conn:
-            conn.close()
+    cursor.execute("SELECT * FROM predictions ORDER BY match_date ASC")
+    predictions = cursor.fetchall()
+
+    cursor.close()
+    conn.close()
 
     return render_template("index.html", predictions=predictions)
 
@@ -62,33 +127,24 @@ def index():
 @app.route("/login", methods=["GET", "POST"])
 def login():
     if request.method == "POST":
-        username = request.form.get("username", "").strip()
-        password = request.form.get("password", "").strip()
+        username = request.form.get("username")
+        password = request.form.get("password")
 
-        conn = None
-        cursor = None
+        conn = get_db_connection()
+        cursor = conn.cursor(dictionary=True)
 
-        try:
-            conn = get_db_connection()
-            cursor = conn.cursor(dictionary=True)
-            cursor.execute("SELECT * FROM users WHERE username = %s", (username,))
-            user = cursor.fetchone()
+        cursor.execute("SELECT * FROM users WHERE username = %s", (username,))
+        user = cursor.fetchone()
 
-            if user and check_password_hash(user["password_hash"], password):
-                session["user_id"] = user["id"]
-                session["username"] = user["username"]
-                session["is_admin"] = bool(user["is_admin"])
-                flash("Sesión iniciada correctamente.", "success")
-                return redirect(url_for("admin_dashboard"))
-            else:
-                flash("Usuario o contraseña incorrectos.", "danger")
-        except Error as e:
-            flash(f"Error al iniciar sesión: {e}", "danger")
-        finally:
-            if cursor:
-                cursor.close()
-            if conn:
-                conn.close()
+        if user and check_password_hash(user["password_hash"], password):
+            session["user_id"] = user["id"]
+            session["is_admin"] = user["is_admin"]
+            return redirect(url_for("admin_dashboard"))
+        else:
+            flash("Credenciales incorrectas")
+
+        cursor.close()
+        conn.close()
 
     return render_template("login.html")
 
@@ -96,33 +152,20 @@ def login():
 @app.route("/logout")
 def logout():
     session.clear()
-    flash("Has cerrado sesión.", "info")
     return redirect(url_for("index"))
 
 
 @app.route("/admin")
 @admin_required
 def admin_dashboard():
-    conn = None
-    cursor = None
-    predictions = []
+    conn = get_db_connection()
+    cursor = conn.cursor(dictionary=True)
 
-    try:
-        conn = get_db_connection()
-        cursor = conn.cursor(dictionary=True)
-        cursor.execute("""
-            SELECT *
-            FROM predictions
-            ORDER BY created_at DESC
-        """)
-        predictions = cursor.fetchall()
-    except Error as e:
-        flash(f"Error al cargar el panel: {e}", "danger")
-    finally:
-        if cursor:
-            cursor.close()
-        if conn:
-            conn.close()
+    cursor.execute("SELECT * FROM predictions ORDER BY created_at DESC")
+    predictions = cursor.fetchall()
+
+    cursor.close()
+    conn.close()
 
     return render_template("admin.html", predictions=predictions)
 
@@ -130,158 +173,77 @@ def admin_dashboard():
 @app.route("/admin/add_prediction", methods=["POST"])
 @admin_required
 def add_prediction():
-    competition = request.form.get("competition", "").strip()
-    match_date = request.form.get("match_date", "").strip()
-    home_team = request.form.get("home_team", "").strip()
-    away_team = request.form.get("away_team", "").strip()
-    predicted_result = request.form.get("predicted_result", "").strip()
-    predicted_home_score = request.form.get("predicted_home_score")
-    predicted_away_score = request.form.get("predicted_away_score")
-    confidence_level = request.form.get("confidence_level", "Media").strip()
-    analysis = request.form.get("analysis", "").strip()
+    data = request.form
 
-    if not all([competition, match_date, home_team, away_team, predicted_result]):
-        flash("Completa todos los campos obligatorios.", "warning")
-        return redirect(url_for("admin_dashboard"))
+    conn = get_db_connection()
+    cursor = conn.cursor()
 
-    conn = None
-    cursor = None
+    cursor.execute("""
+        INSERT INTO predictions (
+            competition, match_date, home_team, away_team,
+            predicted_result, predicted_home_score, predicted_away_score,
+            confidence_level, analysis, created_by
+        )
+        VALUES (%s, %s, %s, %s, %s, %s, %s, %s, %s, %s)
+    """, (
+        data["competition"],
+        data["match_date"],
+        data["home_team"],
+        data["away_team"],
+        data["predicted_result"],
+        data.get("predicted_home_score") or None,
+        data.get("predicted_away_score") or None,
+        data["confidence_level"],
+        data["analysis"],
+        session["user_id"]
+    ))
 
-    try:
-        conn = get_db_connection()
-        cursor = conn.cursor()
-        cursor.execute("""
-            INSERT INTO predictions (
-                competition,
-                match_date,
-                home_team,
-                away_team,
-                predicted_result,
-                predicted_home_score,
-                predicted_away_score,
-                confidence_level,
-                analysis,
-                created_by
-            )
-            VALUES (%s, %s, %s, %s, %s, %s, %s, %s, %s, %s)
-        """, (
-            competition,
-            match_date,
-            home_team,
-            away_team,
-            predicted_result,
-            predicted_home_score if predicted_home_score else None,
-            predicted_away_score if predicted_away_score else None,
-            confidence_level,
-            analysis,
-            session["user_id"]
-        ))
-        conn.commit()
-        flash("Predicción creada correctamente.", "success")
-    except Error as e:
-        flash(f"Error al guardar la predicción: {e}", "danger")
-    finally:
-        if cursor:
-            cursor.close()
-        if conn:
-            conn.close()
+    conn.commit()
+    cursor.close()
+    conn.close()
 
     return redirect(url_for("admin_dashboard"))
 
 
-@app.route("/admin/delete_prediction/<int:prediction_id>", methods=["POST"])
+@app.route("/admin/delete/<int:id>", methods=["POST"])
 @admin_required
-def delete_prediction(prediction_id):
-    conn = None
-    cursor = None
+def delete_prediction(id):
+    conn = get_db_connection()
+    cursor = conn.cursor()
 
-    try:
-        conn = get_db_connection()
-        cursor = conn.cursor()
-        cursor.execute("DELETE FROM predictions WHERE id = %s", (prediction_id,))
-        conn.commit()
-        flash("Predicción eliminada.", "info")
-    except Error as e:
-        flash(f"Error al eliminar: {e}", "danger")
-    finally:
-        if cursor:
-            cursor.close()
-        if conn:
-            conn.close()
+    cursor.execute("DELETE FROM predictions WHERE id = %s", (id,))
+    conn.commit()
+
+    cursor.close()
+    conn.close()
 
     return redirect(url_for("admin_dashboard"))
 
 
-@app.route("/admin/update_result/<int:prediction_id>", methods=["POST"])
+@app.route("/admin/update_result/<int:id>", methods=["POST"])
 @admin_required
-def update_result(prediction_id):
-    actual_home_score = request.form.get("actual_home_score")
-    actual_away_score = request.form.get("actual_away_score")
+def update_result(id):
+    home = request.form.get("actual_home_score")
+    away = request.form.get("actual_away_score")
 
-    if actual_home_score == "" or actual_away_score == "":
-        flash("Debes poner ambos resultados reales.", "warning")
-        return redirect(url_for("admin_dashboard"))
+    conn = get_db_connection()
+    cursor = conn.cursor()
 
-    if int(actual_home_score) > int(actual_away_score):
-        status = "Acertada" if request.form.get("predicted_result") == "1" else "Fallada"
-    elif int(actual_home_score) < int(actual_away_score):
-        status = "Acertada" if request.form.get("predicted_result") == "2" else "Fallada"
-    else:
-        status = "Acertada" if request.form.get("predicted_result") == "X" else "Fallada"
+    cursor.execute("""
+        UPDATE predictions
+        SET actual_home_score=%s, actual_away_score=%s
+        WHERE id=%s
+    """, (home, away, id))
 
-    conn = None
-    cursor = None
-
-    try:
-        conn = get_db_connection()
-        cursor = conn.cursor()
-        cursor.execute("""
-            UPDATE predictions
-            SET actual_home_score = %s,
-                actual_away_score = %s,
-                status = %s
-            WHERE id = %s
-        """, (actual_home_score, actual_away_score, status, prediction_id))
-        conn.commit()
-        flash("Resultado actualizado.", "success")
-    except Error as e:
-        flash(f"Error al actualizar resultado: {e}", "danger")
-    finally:
-        if cursor:
-            cursor.close()
-        if conn:
-            conn.close()
+    conn.commit()
+    cursor.close()
+    conn.close()
 
     return redirect(url_for("admin_dashboard"))
 
 
-@app.route("/api/predictions")
-def api_predictions():
-    conn = None
-    cursor = None
-    predictions = []
-
-    try:
-        conn = get_db_connection()
-        cursor = conn.cursor(dictionary=True)
-        cursor.execute("""
-            SELECT id, competition, match_date, home_team, away_team,
-                   predicted_result, predicted_home_score, predicted_away_score,
-                   confidence_level, analysis, status
-            FROM predictions
-            ORDER BY match_date ASC
-        """)
-        predictions = cursor.fetchall()
-    except Error:
-        predictions = []
-    finally:
-        if cursor:
-            cursor.close()
-        if conn:
-            conn.close()
-
-    return jsonify(predictions)
-
-
+# -------------------------
+# RUN
+# -------------------------
 if __name__ == "__main__":
-    app.run(debug=True)
+    app.run(host="0.0.0.0", port=5000)
